@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#000000" />
+<title>Fractal Explorer</title>
+
+<script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+
+<body class="bg-black text-white overflow-hidden [font-family:'Inter',system-ui,sans-serif]">
+
+  <!-- ===== WebGL fallback ===== -->
+  <div id="webgl-error" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
+    <div class="max-w-sm rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10 p-6 text-center space-y-3">
+      <p class="text-sm text-white/80">WebGL2 is not available in this browser, so fractals cannot be rendered.</p>
+      <p class="text-xs text-white/50">Try Chrome, Firefox, Edge or Safari.</p>
+    </div>
+  </div>
+
+  <!-- ===== Fractal canvas ===== -->
+  <canvas id="fractal-canvas" class="fixed inset-0 w-full h-full block cursor-grab active:cursor-grabbing touch-none"></canvas>
+
+  <!-- ===== Fullscreen toggle ===== -->
+  <button id="btn-fullscreen" title="Toggle fullscreen view" aria-label="Toggle fullscreen view"
+          class="absolute top-4 right-4 z-20 p-2.5 rounded-xl bg-white/10 backdrop-blur-xl border border-white/10 hover:bg-white/20 transition shrink-0">
+    <img id="fs-maximize" src="https://unpkg.com/lucide-static@1.44.0/icons/maximize.svg" alt="Enter fullscreen" class="w-5 h-5 invert">
+    <img id="fs-minimize" src="https://unpkg.com/lucide-static@1.44.0/icons/minimize.svg" alt="Exit fullscreen" class="w-5 h-5 invert hidden">
+  </button>
+
+  <!-- ===== Control panel ===== -->
+  <aside id="panel-ui" class="absolute top-4 left-4 z-10 w-[calc(100%-2rem)] max-w-xs rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10 shadow-2xl p-4 space-y-4 select-none transition-all duration-300 ease-out overflow-y-auto max-h-[calc(100vh-2rem)]">
+
+    <div class="flex items-center gap-2.5">
+      <div class="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center shrink-0">
+        <img src="https://unpkg.com/lucide-static@1.44.0/icons/sparkles.svg" alt="" class="w-5 h-5 invert">
+      </div>
+      <div>
+        <h1 class="text-sm font-semibold leading-tight">Fractal Explorer</h1>
+        <p class="text-[11px] text-white/50 leading-tight">Mandelbrot · Julia · Burning Ship</p>
+      </div>
+    </div>
+
+    <!-- Fractal type -->
+    <div>
+      <p class="text-[11px] uppercase tracking-wider text-white/50 mb-1.5">Fractal</p>
+      <div class="grid grid-cols-3 gap-1 bg-black/25 rounded-xl p-1">
+        <button data-fractal="0" class="fractal-btn rounded-lg text-[11px] font-medium px-2 py-1.5 bg-white text-black transition">Mandelbrot</button>
+        <button data-fractal="1" class="fractal-btn rounded-lg text-[11px] font-medium px-2 py-1.5 text-white/70 hover:text-white transition">Julia</button>
+        <button data-fractal="2" class="fractal-btn rounded-lg text-[11px] font-medium px-2 py-1.5 text-white/70 hover:text-white transition">Burning Ship</button>
+      </div>
+    </div>
+
+    <!-- Iterations -->
+    <div>
+      <div class="flex items-center justify-between mb-1.5">
+        <label for="iter-slider" class="text-[11px] uppercase tracking-wider text-white/50">Iterations</label>
+        <span id="iter-value" class="text-xs font-mono text-cyan-300">400</span>
+      </div>
+      <input id="iter-slider" type="range" min="50" max="2000" step="10" value="400"
+             class="w-full accent-cyan-400 cursor-pointer">
+    </div>
+
+    <label class="flex items-center justify-between gap-2 text-[11px] text-white/70 cursor-pointer">
+      <span>Auto detail <span class="text-white/40">(deep zoom)</span></span>
+      <input id="auto-iter" type="checkbox" class="accent-cyan-400 w-4 h-4 cursor-pointer">
+    </label>
+
+    <!-- Quality -->
+    <div>
+      <p class="text-[11px] uppercase tracking-wider text-white/50 mb-1.5">Quality</p>
+      <div class="grid grid-cols-2 gap-1 bg-black/25 rounded-xl p-1">
+        <button id="q1" class="quality-btn rounded-lg text-[11px] font-medium px-2 py-1.5 bg-white text-black transition">1×</button>
+        <button id="q2" class="quality-btn rounded-lg text-[11px] font-medium px-2 py-1.5 text-white/70 hover:text-white transition">2× SSAA</button>
+      </div>
+    </div>
+
+    <!-- Palette -->
+    <div>
+      <p class="text-[11px] uppercase tracking-wider text-white/50 mb-1.5">Palette</p>
+      <div id="palette-row" class="flex flex-wrap gap-2.5"></div>
+    </div>
+
+    <!-- ===== Animation ===== -->
+    <div class="pt-1">
+      <div class="flex items-center justify-between mb-1.5">
+        <p class="text-[11px] uppercase tracking-wider text-white/50">Animation</p>
+        <button id="btn-anim-play" title="Play / pause animation" aria-label="Play or pause animation"
+                class="p-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-400/30 border border-cyan-400/30 transition shrink-0">
+          <img id="anim-play-icon" src="https://unpkg.com/lucide-static@1.44.0/icons/play.svg" alt="Play" class="w-4 h-4 invert">
+          <img id="anim-pause-icon" src="https://unpkg.com/lucide-static@1.44.0/icons/pause.svg" alt="Pause" class="w-4 h-4 invert hidden">
+        </button>
+      </div>
+
+      <div class="grid grid-cols-3 gap-1 bg-black/25 rounded-xl p-1 mb-2">
+        <button data-anim="color" class="anim-btn rounded-lg text-[11px] font-medium px-2 py-1.5 bg-white text-black transition">Color</button>
+        <button data-anim="zoom" class="anim-btn rounded-lg text-[11px] font-medium px-2 py-1.5 text-white/70 hover:text-white transition">Zoom</button>
+        <button data-anim="julia" class="anim-btn rounded-lg text-[11px] font-medium px-2 py-1.5 text-white/70 hover:text-white transition">Julia</button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] text-white/40 shrink-0">Speed</span>
+        <input id="anim-speed" type="range" min="10" max="500" step="10" value="100"
+               class="w-full accent-cyan-400 cursor-pointer">
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center gap-2 pt-1">
+      <button id="btn-reset" title="Reset view"
+              class="p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 transition shrink-0">
+        <img src="https://unpkg.com/lucide-static@1.44.0/icons/rotate-ccw.svg" alt="Reset" class="w-4 h-4 invert">
+      </button>
+      <button id="btn-random-julia" title="Random Julia constant (Julia mode only)" class="hidden p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 transition shrink-0">
+        <img src="https://unpkg.com/lucide-static@1.44.0/icons/dices.svg" alt="Random Julia" class="w-4 h-4 invert">
+      </button>
+      <button id="btn-lock-julia" title="Freeze / unfreeze Julia constant" class="hidden p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 transition shrink-0">
+        <img id="lock-open-icon" src="https://unpkg.com/lucide-static@1.44.0/icons/lock-open.svg" alt="Unlocked" class="w-4 h-4 invert hidden">
+        <img id="lock-closed-icon" src="https://unpkg.com/lucide-static@1.44.0/icons/lock.svg" alt="Locked" class="w-4 h-4 invert hidden">
+      </button>
+      <button id="btn-save" title="Save current screen picture"
+              class="p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 transition shrink-0">
+        <img src="https://unpkg.com/lucide-static@1.44.0/icons/download.svg" alt="Save" class="w-4 h-4 invert">
+      </button>
+      <button id="btn-copy" title="Copy coordinates"
+              class="p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 transition shrink-0">
+        <img src="https://unpkg.com/lucide-static@1.44.0/icons/copy.svg" alt="Copy" class="w-4 h-4 invert">
+      </button>
+      <span id="julia-hint" class="hidden text-[10px] text-white/40 leading-snug flex-1 text-right">Move mouse to change c · click to set</span>
+    </div>
+
+    <!-- High-resolution export -->
+    <div class="pt-1">
+      <p class="text-[11px] uppercase tracking-wider text-white/50 mb-1.5">Export</p>
+      <div class="flex items-center gap-2">
+        <select id="export-res" aria-label="Export resolution"
+                class="flex-1 min-w-0 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg text-[11px] font-medium text-white/80 px-2 py-2 focus:outline-none cursor-pointer">
+          <option value="1920" style="background:#171717;color:#fff">1920 HD</option>
+          <option value="3840" selected style="background:#171717;color:#fff">3840 4K</option>
+          <option value="7680" style="background:#171717;color:#fff">7680 8K</option>
+        </select>
+        <select id="export-format" aria-label="Export format"
+                class="shrink-0 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg text-[11px] font-medium text-white/80 px-2 py-2 focus:outline-none cursor-pointer">
+          <option value="png" style="background:#171717;color:#fff">PNG</option>
+          <option value="jpeg" style="background:#171717;color:#fff">JPEG</option>
+        </select>
+        <button id="btn-export" title="Render at the selected resolution"
+                class="shrink-0 px-3 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-400/30 border border-cyan-400/30 text-cyan-300 text-[11px] font-semibold transition flex items-center gap-1.5">
+          Render
+        </button>
+      </div>
+      <p class="text-[10px] text-white/35 mt-1.5 leading-snug">
+        PNG = lossless · JPEG = much smaller files. Deep zooms take a while on mobile.
+      </p>
+    </div>
+  </aside>
+
+  <!-- ===== Info bar ===== -->
+  <div id="panel-info" class="absolute bottom-4 left-4 z-10 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 px-3.5 py-2 font-mono text-[11px] text-white/70 space-x-2 transition-all duration-300 ease-out">
+    <span id="info-re">Re: -0.500000</span><span class="text-white/25">·</span>
+    <span id="info-im">Im: 0.000000</span><span class="text-white/25">·</span>
+    <span id="info-zoom">×1.0</span><span class="text-white/25">·</span>
+    <span id="info-fps">– fps</span>
+  </div>
+
+  <!-- ===== Toast ===== -->
+  <div id="toast" class="absolute bottom-20 left-4 z-20 rounded-lg bg-cyan-500/90 text-black text-xs font-semibold px-3 py-1.5 opacity-0 transition-opacity duration-300 pointer-events-none">
+  </div>
+
+  <!-- ===== Export overlay ===== -->
+  <div id="export-overlay" class="hidden fixed inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div class="rounded-2xl bg-white/10 border border-white/10 p-6 flex items-center gap-3 shadow-2xl">
+      <div class="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin shrink-0"></div>
+      <span id="export-overlay-text" class="text-sm text-white/85">Rendering export…</span>
+    </div>
+  </div>
+
+  <!-- ===== Result modal ===== -->
+  <div id="result-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-3 overflow-y-auto">
+    <div class="bg-neutral-900 border border-white/10 rounded-2xl shadow-2xl p-4 w-full max-w-lg space-y-3 my-6">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-white/90">Image ready</h2>
+        <button id="btn-close-result" title="Close" aria-label="Close"
+                class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition">
+          <img src="https://unpkg.com/lucide-static@1.44.0/icons/x.svg" alt="Close" class="w-4 h-4 invert">
+        </button>
+      </div>
+      <div class="rounded-xl overflow-hidden bg-black/40 border border-white/10">
+        <img id="result-img" src="" alt="Rendered fractal" draggable="false"
+             class="w-full h-auto max-h-[55vh] object-contain mx-auto select-none">
+      </div>
+      <p id="result-meta" class="text-[11px] text-white/50 font-mono break-all"></p>
+      <div class="flex gap-2">
+        <button id="btn-result-download" class="flex-1 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold transition">
+          Download
+        </button>
+        <button id="btn-result-open" class="flex-1 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold transition">
+          Open
+        </button>
+      </div>
+      <p class="text-[10px] text-white/40 leading-snug">
+        If the download doesn't start (common in preview environments), <b>long-press the image</b> above and choose “Save image” / “Guardar imagen”.
+      </p>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    /* ============================================================
+       WebGL2 setup
+       ============================================================ */
+    var canvas = document.getElementById('fractal-canvas');
+    var gl = canvas.getContext('webgl2', {
+      antialias: false,
+      depth: false,
+      stencil: false,
+      alpha: false,
+      powerPreference: 'high-performance',
+      preserveDrawingBuffer: true
+    });
+
+    if (!gl) {
+      document.getElementById('webgl-error').classList.remove('hidden');
+      return;
+    }
+
+    function compileShader(type, src) {
+      var sh = gl.createShader(type);
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        throw new Error('Shader compile error: ' + gl.getShaderInfoLog(sh));
+      }
+      return sh;
+    }
+
+    var VERT_SRC = '#version 300 es\n' +
+      'void main() {\n' +
+      '  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);\n' +
+      '  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n' +
+      '}\n';
+
+    /* Double-float fractal shader with a palette-animation offset */
+    var FRAG_SRC = '#version 300 es\n' +
+      'precision highp float;\n' +
+      'uniform vec2 u_res;\n' +
+      'uniform vec2 u_cHi;\n' +
+      'uniform vec2 u_cLo;\n' +
+      'uniform float u_scale;\n' +
+      'uniform float u_maxIter;\n' +
+      'uniform int u_type;\n' +
+      'uniform vec2 u_jHi;\n' +
+      'uniform vec2 u_jLo;\n' +
+      'uniform vec3 u_palette[32];\n' +
+      'uniform int u_paletteCount;\n' +
+      'uniform float u_anim;\n' +
+      'out vec4 outColor;\n' +
+      '\n' +
+      'const float SPLIT = 8193.0;\n' +
+      '\n' +
+      'vec2 splt(float a) {\n' +
+      '  float t = SPLIT * a;\n' +
+      '  float hi = t - (t - a);\n' +
+      '  return vec2(hi, a - hi);\n' +
+      '}\n' +
+      '\n' +
+      'vec2 twoProd(float a, float b) {\n' +
+      '  vec2 p = splt(a);\n' +
+      '  vec2 q = splt(b);\n' +
+      '  float hi = a * b;\n' +
+      '  float lo = ((p.x * q.x - hi) + p.x * q.y + p.y * q.x) + p.y * q.y;\n' +
+      '  return vec2(hi, lo);\n' +
+      '}\n' +
+      '\n' +
+      'vec2 dadd(vec2 a, vec2 b) {\n' +
+      '  float s = a.x + b.x;\n' +
+      '  float v = s - a.x;\n' +
+      '  float e = (a.x - (s - v)) + (b.x - v);\n' +
+      '  float t = e + (a.y + b.y);\n' +
+      '  return vec2(s, t);\n' +
+      '}\n' +
+      '\n' +
+      'vec2 dsub(vec2 a, vec2 b) { return dadd(a, vec2(-b.x, -b.y)); }\n' +
+      '\n' +
+      'vec2 dmul(vec2 a, vec2 b) {\n' +
+      '  vec2 p = twoProd(a.x, b.x);\n' +
+      '  p.y += a.x * b.y + a.y * b.x;\n' +
+      '  float s = p.x + p.y;\n' +
+      '  float e = p.y - (s - p.x);\n' +
+      '  return vec2(s, e);\n' +
+      '}\n' +
+      '\n' +
+      'vec4 csqr(vec2 zr, vec2 zi) {\n' +
+      '  vec2 rr = dmul(zr, zr);\n' +
+      '  vec2 ii = dmul(zi, zi);\n' +
+      '  vec2 re = dsub(rr, ii);\n' +
+      '  vec2 im = dmul(zr, zi);\n' +
+      '  im = dadd(im, im);\n' +
+      '  return vec4(re, im);\n' +
+      '}\n' +
+      '\n' +
+      'vec2 cabs(vec2 a) {\n' +
+      '  return (a.x < 0.0) ? vec2(-a.x, -a.y) : a;\n' +
+      '}\n' +
+      '\n' +
+      'void main() {\n' +
+      '  vec2 uv = (gl_FragCoord.xy - 0.5 * u_res) / u_scale;\n' +
+      '  vec2 cRe = vec2(u_cHi.x, u_cLo.x);\n' +
+      '  vec2 cIm = vec2(u_cHi.y, u_cLo.y);\n' +
+      '  vec2 zr = vec2(0.0);\n' +
+      '  vec2 zi = vec2(0.0);\n' +
+      '\n' +
+      '  if (u_type == 1) {\n' +
+      '    cRe = vec2(u_jHi.x, u_jLo.x);\n' +
+      '    cIm = vec2(u_jHi.y, u_jLo.y);\n' +
+      '    zr = dadd(vec2(u_cHi.x, u_cLo.x), vec2(uv.x, 0.0));\n' +
+      '    zi = dadd(vec2(u_cHi.y, u_cLo.y), vec2(uv.y, 0.0));\n' +
+      '  } else {\n' +
+      '    cRe = dadd(vec2(u_cHi.x, u_cLo.x), vec2(uv.x, 0.0));\n' +
+      '    cIm = dadd(vec2(u_cHi.y, u_cLo.y), vec2(uv.y, 0.0));\n' +
+      '  }\n' +
+      '\n' +
+      '  float m = 0.0;\n' +
+      '  bool escaped = false;\n' +
+      '\n' +
+      '  for (int i = 0; i < 2048; i++) {\n' +
+      '    if (float(i) >= u_maxIter) break;\n' +
+      '    if (u_type == 2) { zr = cabs(zr); zi = cabs(zi); }\n' +
+      '    vec4 zz = csqr(zr, zi);\n' +
+      '    zr = dadd(zz.xy, cRe);\n' +
+      '    zi = dadd(zz.zw, cIm);\n' +
+      '\n' +
+      '    vec2 norm = dadd(dmul(zr, zr), dmul(zi, zi));\n' +
+      '    if (norm.x > 4.0) {\n' +
+      '      m = float(i) + 1.0 - log2(log2(norm.x));\n' +
+      '      escaped = true;\n' +
+      '      break;\n' +
+      '    }\n' +
+      '  }\n' +
+      '\n' +
+      '  if (!escaped) { outColor = vec4(0.0); return; }\n' +
+      '  m = max(m, 0.0);\n' +
+      '  float t = m / u_maxIter * float(u_paletteCount) + u_anim;\n' +
+      '  float idx = floor(t);\n' +
+      '  vec3 c0 = u_palette[int(mod(idx, float(u_paletteCount)))];\n' +
+      '  vec3 c1 = u_palette[int(mod(idx + 1.0, float(u_paletteCount)))];\n' +
+      '  vec3 col = mix(c0, c1, fract(t));\n' +
+      '  col = pow(col, vec3(0.85));\n' +
+      '  outColor = vec4(col, 1.0);\n' +
+      '}\n';
+
+    var DOWN_SRC = '#version 300 es\n' +
+      'precision highp float;\n' +
+      'uniform sampler2D u_tex;\n' +
+      'out vec4 outColor;\n' +
+      'void main() {\n' +
+      '  ivec2 c = ivec2(gl_FragCoord.xy) * 2;\n' +
+      '  vec4 a = texelFetch(u_tex, c, 0);\n' +
+      '  vec4 b = texelFetch(u_tex, c + ivec2(1, 0), 0);\n' +
+      '  vec4 d = texelFetch(u_tex, c + ivec2(0, 1), 0);\n' +
+      '  vec4 e = texelFetch(u_tex, c + ivec2(1, 1), 0);\n' +
+      '  outColor = (a + b + d + e) * 0.25;\n' +
+      '}\n';
+
+    function makeProgram(fragSrc) {
+      var p = gl.createProgram();
+      gl.attachShader(p, compileShader(gl.VERTEX_SHADER, VERT_SRC));
+      gl.attachShader(p, compileShader(gl.FRAGMENT_SHADER, fragSrc));
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+        throw new Error('Program link error: ' + gl.getProgramInfoLog(p));
+      }
+      return p;
+    }
+
+    var progFractal = makeProgram(FRAG_SRC);
+    var progDown = makeProgram(DOWN_SRC);
+
+    var Uf = {
+      res: gl.getUniformLocation(progFractal, 'u_res'),
+      cHi: gl.getUniformLocation(progFractal, 'u_cHi'),
+      cLo: gl.getUniformLocation(progFractal, 'u_cLo'),
+      scale: gl.getUniformLocation(progFractal, 'u_scale'),
+      maxIter: gl.getUniformLocation(progFractal, 'u_maxIter'),
+      type: gl.getUniformLocation(progFractal, 'u_type'),
+      jHi: gl.getUniformLocation(progFractal, 'u_jHi'),
+      jLo: gl.getUniformLocation(progFractal, 'u_jLo'),
+      palette: gl.getUniformLocation(progFractal, 'u_palette'),
+      paletteCount: gl.getUniformLocation(progFractal, 'u_paletteCount'),
+      anim: gl.getUniformLocation(progFractal, 'u_anim')
+    };
+    var Ud = { tex: gl.getUniformLocation(progDown, 'u_tex') };
+
+    var FRACTAL_NAMES = ['mandelbrot', 'julia', 'burning-ship'];
+
+    /* ============================================================
+       State
+       ============================================================ */
+    var PRESETS = [
+      { center: [-0.5, 0],      span: 4.0 },
+      { center: [0, 0],         span: 4.0 },
+      { center: [-0.4, -0.15],  span: 5.0 }
+    ];
+
+    var JULIA_DEFAULT = { x: -0.75, y: 0.15 };
+
+    var MIN_SCALE = 8;
+    var MAX_SCALE = 1e15;
+
+    var state = {
+      type: 0,
+      center: { x: -0.5, y: 0 },
+      scale: 1,
+      baseScale: 1,
+      maxIter: 400,
+      autoIter: false,
+      aa: 1,
+      juliaC: { x: JULIA_DEFAULT.x, y: JULIA_DEFAULT.y },
+      juliaFollow: true
+    };
+
+    function effectiveIter() {
+      if (!state.autoIter) return state.maxIter;
+      var zoom = state.baseScale / state.scale;
+      var boost = 1 + 0.22 * Math.log10(Math.max(1, zoom));
+      return Math.max(1, Math.min(2048, Math.round(state.maxIter * boost)));
+    }
+
+    /* ============================================================
+       Animation state
+       ============================================================ */
+    var anim = {
+      running: false,
+      mode: 'color',      // 'color' | 'zoom' | 'julia'
+      offset: 0,          // palette-cycle offset
+      elapsed: 0,         // seconds since zoom loop start
+      theta: 0,           // julia orbit angle
+      startScale: 0,
+      startCenter: { x: 0, y: 0 },
+      prevAutoIter: false
+    };
+
+    var rafAnim = 0;
+    var animLastTime = 0;
+
+    function snapZoom() {
+      anim.startScale = state.scale;
+      anim.startCenter = { x: state.center.x, y: state.center.y };
+      anim.elapsed = 0;
+    }
+
+    function stepAnimation(dt) {
+      var s = anim.speed;
+      if (anim.mode === 'color') {
+        anim.offset = (anim.offset + 0.6 * s * dt) % 1;
+      } else if (anim.mode === 'zoom') {
+        anim.elapsed += dt * s;
+        var dur = 14; // seconds per full in→out cycle at speed 1
+        var t = (anim.elapsed % dur) / dur;
+        // smooth ping-pong: 0 -> 1 -> 0 continuously
+        var e = 0.5 - 0.5 * Math.cos(2 * Math.PI * t);
+        state.center.x = anim.startCenter.x;
+        state.center.y = anim.startCenter.y;
+        state.scale = anim.startScale * Math.pow(1e8, e);
+        state.autoIter = true; // keep detail as we go deeper
+      } else if (anim.mode === 'julia') {
+        if (state.type !== 1) { stopAnimation(); return; }
+        anim.theta += 0.6 * s * dt;
+        var R = 0.7885;
+        state.juliaC.x = R * Math.cos(anim.theta);
+        state.juliaC.y = R * Math.sin(anim.theta);
+        state.juliaFollow = false;
+      }
+    }
+
+    function animFrame(ts) {
+      if (!anim.running) { rafAnim = 0; return; }
+      var dt = Math.min((ts - animLastTime) / 1000, 0.05);
+      animLastTime = ts;
+      stepAnimation(dt);
+      draw();
+      rafAnim = requestAnimationFrame(animFrame);
+    }
+
+    function startAnimation() {
+      if (anim.running) return;
+      if (anim.mode === 'zoom') snapZoom();
+      if (anim.mode === 'julia') applyType(1, true);
+      anim.prevAutoIter = state.autoIter;
+      anim.running = true;
+      animLastTime = performance.now();
+      if (!rafAnim) rafAnim = requestAnimationFrame(animFrame);
+      updateAnimUI();
+    }
+
+    function stopAnimation() {
+      if (!anim.running) return;
+      anim.running = false;
+      state.autoIter = anim.prevAutoIter;
+      updateAnimUI();
+      requestRender();
+    }
+
+    /* ============================================================
+       Palettes
+       ============================================================ */
+    var PALETTES = [
+      { name: 'Classic', colors: [
+        [0.00, 0.00, 0.00], [0.10, 0.05, 0.30], [0.05, 0.20, 0.55],
+        [0.10, 0.50, 0.90], [0.40, 0.85, 1.00], [0.90, 0.97, 1.00]
+      ]},
+      { name: 'Fire', colors: [
+        [0.02, 0.01, 0.01], [0.45, 0.02, 0.02], [0.85, 0.15, 0.03],
+        [1.00, 0.50, 0.05], [1.00, 0.85, 0.30], [1.00, 1.00, 0.92]
+      ]},
+      { name: 'Ocean', colors: [
+        [0.00, 0.03, 0.14], [0.02, 0.22, 0.48], [0.06, 0.52, 0.72],
+        [0.35, 0.82, 0.92], [0.80, 0.96, 1.00]
+      ]},
+      { name: 'Emerald', colors: [
+        [0.01, 0.08, 0.04], [0.04, 0.36, 0.18], [0.12, 0.68, 0.32],
+        [0.55, 0.92, 0.55], [0.88, 1.00, 0.88]
+      ]},
+      { name: 'Sunset', colors: [
+        [0.05, 0.02, 0.12], [0.45, 0.06, 0.28], [0.95, 0.30, 0.16],
+        [1.00, 0.62, 0.22], [1.00, 0.90, 0.58], [1.00, 1.00, 0.96]
+      ]},
+      { name: 'Rainbow', colors: [
+        [0.00, 0.00, 0.00], [0.50, 0.00, 1.00], [0.00, 0.00, 1.00],
+        [0.00, 1.00, 1.00], [0.00, 1.00, 0.00], [1.00, 1.00, 0.00],
+        [1.00, 0.60, 0.00], [1.00, 0.00, 0.00], [1.00, 1.00, 1.00]
+      ]},
+      { name: 'Aurora', colors: [
+        [0.02, 0.01, 0.08], [0.15, 0.05, 0.40], [0.10, 0.35, 0.55],
+        [0.25, 0.70, 0.55], [0.65, 0.90, 0.45], [1.00, 0.95, 0.60],
+        [1.00, 0.70, 0.35], [0.90, 0.40, 0.55], [1.00, 1.00, 1.00]
+      ]},
+      { name: 'Neon', colors: [
+        [0.02, 0.00, 0.08], [0.60, 0.00, 0.80], [0.00, 0.80, 1.00],
+        [0.00, 1.00, 0.55], [1.00, 0.95, 0.20], [1.00, 0.30, 0.70],
+        [1.00, 1.00, 1.00]
+      ]}
+    ];
+
+    var MAX_PAL = 32;
+    var palIndex = 0;
+    var palData = new Float32Array(MAX_PAL * 3);
+
+    function uploadPalette() {
+      var colors = PALETTES[palIndex].colors;
+      for (var i = 0; i < MAX_PAL; i++) {
+        var c = colors[i] || [0, 0, 0];
+        palData[i * 3] = c[0];
+        palData[i * 3 + 1] = c[1];
+        palData[i * 3 + 2] = c[2];
+      }
+      gl.uniform3fv(Uf.palette, palData);
+      gl.uniform1i(Uf.paletteCount, colors.length);
+    }
+
+    /* ============================================================
+       Helpers & FBO utilities
+       ============================================================ */
+    var f32 = new Float32Array(1);
+    function fr(x) { f32[0] = x; return f32[0]; }
+
+    function dfSplit(x) {
+      var hi = fr(x);
+      return { hi: hi, lo: fr(x - hi) };
+    }
+
+    function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+    function ensureCanvasSize() {
+      var w = canvas.clientWidth, h = canvas.clientHeight;
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var bw = Math.max(1, Math.round(w * dpr));
+      var bh = Math.max(1, Math.round(h * dpr));
+      if (canvas.width !== bw || canvas.height !== bh) {
+        canvas.width = bw;
+        canvas.height = bh;
+      }
+      return { w: w, h: h, bw: bw, bh: bh, dpr: dpr };
+    }
+
+    function offsetAt(px, py, s) {
+      var w = canvas.clientWidth, h = canvas.clientHeight;
+      return { x: (px - w / 2) / s, y: -(py - h / 2) / s };
+    }
+
+    function complexAt(px, py) {
+      var o = offsetAt(px, py, state.scale);
+      return { x: state.center.x + o.x, y: state.center.y + o.y };
+    }
+
+    function zoomAt(px, py, factor) {
+      stopAnimation();
+      var s0 = state.scale;
+      var s1 = clamp(s0 * factor, MIN_SCALE, MAX_SCALE);
+      var o0 = offsetAt(px, py, s0);
+      var o1 = offsetAt(px, py, s1);
+      state.center.x += o0.x - o1.x;
+      state.center.y += o0.y - o1.y;
+      state.scale = s1;
+      requestRender();
+    }
+
+    function createFBO(w, h) {
+      var tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      var fbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      var status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      if (status !== gl.FRAMEBUFFER_COMPLETE) {
+        gl.deleteTexture(tex);
+        gl.deleteFramebuffer(fbo);
+        return null;
+      }
+      return { tex: tex, fbo: fbo, w: w, h: h };
+    }
+
+    var fboCache = {};
+    function ensureFBO(w, h) {
+      var key = w + 'x' + h;
+      if (!fboCache[key]) fboCache[key] = createFBO(w, h);
+      return fboCache[key];
+    }
+
+    /* ============================================================
+       Core GL rendering passes
+       ============================================================ */
+    function renderFractalTo(W, H, pxPerUnit, fbo) {
+      gl.useProgram(progFractal);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo ? fbo.fbo : null);
+      gl.viewport(0, 0, W, H);
+
+      var cx = dfSplit(state.center.x), cy = dfSplit(state.center.y);
+      var jx = dfSplit(state.juliaC.x), jy = dfSplit(state.juliaC.y);
+      gl.uniform2f(Uf.res, W, H);
+      gl.uniform2f(Uf.cHi, cx.hi, cy.hi);
+      gl.uniform2f(Uf.cLo, cx.lo, cy.lo);
+      gl.uniform2f(Uf.jHi, jx.hi, jy.hi);
+      gl.uniform2f(Uf.jLo, jx.lo, jy.lo);
+      gl.uniform1f(Uf.scale, pxPerUnit);
+      gl.uniform1f(Uf.maxIter, effectiveIter());
+      gl.uniform1i(Uf.type, state.type);
+      gl.uniform1f(Uf.anim, anim.offset);
+      uploadPalette();
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    function renderDownsampleTo(W, H, srcTex, fbo) {
+      gl.useProgram(progDown);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo ? fbo.fbo : null);
+      gl.viewport(0, 0, W, H);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, srcTex);
+      gl.uniform1i(Ud.tex, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+
+    function syncDraw() {
+      var s = ensureCanvasSize();
+      if (state.aa === 2) {
+        var big = ensureFBO(s.bw * 2, s.bh * 2);
+        if (big) {
+          renderFractalTo(s.bw * 2, s.bh * 2, state.scale * s.dpr * 2, big);
+          renderDownsampleTo(s.bw, s.bh, big.tex, null);
+          return;
+        }
+      }
+      renderFractalTo(s.bw, s.bh, state.scale * s.dpr, null);
+    }
+
+    var rafPending = false;
+    function requestRender() {
+      if (!rafPending) {
+        rafPending = true;
+        requestAnimationFrame(function () {
+          rafPending = false;
+          draw();
+        });
+      }
+    }
+
+    var fpsEma = 0, lastT = 0;
+    function draw() {
+      syncDraw();
+      var now = performance.now();
+      if (lastT) {
+        var dt = now - lastT;
+        fpsEma = fpsEma ? fpsEma * 0.92 + (1000 / dt) * 0.08 : 1000 / dt;
+      }
+      lastT = now;
+      updateInfo(fpsEma);
+    }
+
+    /* ============================================================
+       Toast & result modal
+       ============================================================ */
+    var toastEl = document.getElementById('toast');
+    var toastTimer = null;
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.remove('opacity-0');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { toastEl.classList.add('opacity-0'); }, 2600);
+    }
+
+    var modalEl = document.getElementById('result-modal');
+    var modalImg = document.getElementById('result-img');
+    var modalMeta = document.getElementById('result-meta');
+    var modalDownload = document.getElementById('btn-result-download');
+    var modalOpen = document.getElementById('btn-result-open');
+    var currentDataUrl = '';
+
+    function pixelsToDataUrl(pixels, W, H, format, quality) {
+      var c = document.createElement('canvas');
+      c.width = W;
+      c.height = H;
+      var ctx = c.getContext('2d');
+      var img = ctx.createImageData(W, H);
+      var rowBytes = W * 4;
+      for (var y = 0; y < H; y++) {
+        var srcRow = (H - 1 - y) * rowBytes;
+        var dstRow = y * rowBytes;
+        for (var i = 0; i < rowBytes; i++) {
+          img.data[dstRow + i] = pixels[srcRow + i];
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      var type = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+      var q = format === 'jpeg' ? (quality || 0.92) : 1;
+      var url = c.toDataURL(type, q);
+      c.width = 1; c.height = 1;
+      return url;
+    }
+
+    function showResultModal(dataUrl, filename, W, H) {
+      currentDataUrl = dataUrl;
+      modalImg.src = dataUrl;
+      modalMeta.textContent = filename + '  ·  ' + W + '×' + H;
+      modalEl.classList.remove('hidden');
+    }
+
+    function hideResultModal() {
+      modalEl.classList.add('hidden');
+      modalImg.src = '';
+      currentDataUrl = '';
+    }
+    document.getElementById('btn-close-result').addEventListener('click', hideResultModal);
+    modalEl.addEventListener('click', function (e) {
+      if (e.target === modalEl) hideResultModal();
+    });
+
+    function triggerDownload(dataUrl, filename) {
+      try {
+        var a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } catch (err) { /* ignore */ }
+    }
+
+    modalDownload.addEventListener('click', function () {
+      if (currentDataUrl) triggerDownload(currentDataUrl, modalMeta.textContent.split('  ·  ')[0]);
+    });
+
+    modalOpen.addEventListener('click', function () {
+      if (currentDataUrl) window.open(currentDataUrl, '_blank');
+    });
+
+    function currentFormat() {
+      return document.getElementById('export-format').value;
+    }
+
+    function saveScreen() {
+      try {
+        stopAnimation();
+        syncDraw();
+        var W = canvas.width, H = canvas.height;
+        var pixels = new Uint8Array(W * H * 4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        var format = currentFormat();
+        var zoom = state.baseScale / state.scale;
+        var ext = format === 'jpeg' ? 'jpg' : 'png';
+        var name = FRACTAL_NAMES[state.type] + '_screen_x' +
+                   zoom.toExponential(1).replace('+', '') + '_' + W + 'x' + H + '.' + ext;
+        var dataUrl = pixelsToDataUrl(pixels, W, H, format);
+        showResultModal(dataUrl, name, W, H);
+        showToast('Image ready — long-press to save if download is blocked');
+      } catch (err) {
+        showToast('Save failed: ' + err.message);
+      }
+    }
+    document.getElementById('btn-save').addEventListener('click', saveScreen);
+
+    /* High-resolution export */
+    var EXPORT_AA_BUDGET = 20 * 1000 * 1000;
+
+    function runExport(longSide) {
+      stopAnimation();
+      var cssW = Math.max(1, canvas.clientWidth);
+      var cssH = Math.max(1, canvas.clientHeight);
+      var k = longSide / Math.max(cssW, cssH);
+      var W = Math.max(1, Math.round(cssW * k));
+      var H = Math.max(1, Math.round(cssH * k));
+
+      var maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+      if (Math.max(W, H) > maxTex) {
+        var r = maxTex / Math.max(W, H);
+        W = Math.max(1, Math.round(W * r));
+        H = Math.max(1, Math.round(H * r));
+      }
+
+      var aa = 1;
+      if (W * H <= EXPORT_AA_BUDGET && Math.max(W * 2, H * 2) <= maxTex) {
+        aa = 2;
+      }
+
+      var overlay = document.getElementById('export-overlay');
+      var overlayText = document.getElementById('export-overlay-text');
+      overlayText.textContent = 'Rendering ' + W + '×' + H +
+        (aa === 2 ? ' · 2× SSAA' : '') + '…';
+      overlay.classList.remove('hidden');
+
+      setTimeout(function () {
+        var ok = true;
+        try {
+          ok = doExport(W, H, aa);
+        } catch (err) {
+          showToast('Export failed: ' + err.message);
+          ok = false;
+        }
+        overlay.classList.add('hidden');
+        if (ok) showToast('Export ready — long-press the image if download is blocked');
+      }, 60);
+    }
+
+    function doExport(W, H, aa) {
+      var cssW = Math.max(1, canvas.clientWidth);
+      var final = ensureFBO(W, H);
+      if (!final) {
+        showToast('Not enough GPU memory for this resolution on this device.');
+        return false;
+      }
+
+      if (aa === 2) {
+        var big = ensureFBO(W * 2, H * 2);
+        if (big) {
+          renderFractalTo(W * 2, H * 2, state.scale * (W * 2) / cssW, big);
+          renderDownsampleTo(W, H, big.tex, final);
+        } else {
+          renderFractalTo(W, H, state.scale * W / cssW, final);
+        }
+      } else {
+        renderFractalTo(W, H, state.scale * W / cssW, final);
+      }
+
+      var pixels = new Uint8Array(W * H * 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, final.fbo);
+      gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+      var format = currentFormat();
+      var ext = format === 'jpeg' ? 'jpg' : 'png';
+      var zoom = state.baseScale / state.scale;
+      var name = FRACTAL_NAMES[state.type] + '_x' +
+                 zoom.toExponential(1).replace('+', '') + '_' + W + 'x' + H + '.' + ext;
+
+      var dataUrl = pixelsToDataUrl(pixels, W, H, format);
+      showResultModal(dataUrl, name, W, H);
+      triggerDownload(dataUrl, name);
+      return true;
+    }
+
+    document.getElementById('btn-export').addEventListener('click', function () {
+      var longSide = parseInt(document.getElementById('export-res').value, 10) || 3840;
+      runExport(longSide);
+    });
+
+    /* ============================================================
+       Info bar
+       ============================================================ */
+    function fmt(v) {
+      var a = Math.abs(v);
+      if (a >= 1e4 || (a > 0 && a < 1e-4)) return v.toExponential(4);
+      return v.toFixed(6);
+    }
+
+    function updateInfo(fps) {
+      var zoom = state.baseScale / state.scale;
+      document.getElementById('info-re').textContent = 'Re: ' + fmt(state.center.x);
+      document.getElementById('info-im').textContent = 'Im: ' + fmt(state.center.y);
+      document.getElementById('info-zoom').textContent = '×' + zoom.toExponential(2);
+      document.getElementById('info-fps').textContent = Math.round(fps) + ' fps';
+    }
+
+    /* ============================================================
+       Pointer input
+       ============================================================ */
+    var ptrs = new Map();
+    var panStart = null, panCenter = null, tapDown = null, pinch = null;
+
+    function ptFromEvent(e) { return { x: e.clientX, y: e.clientY }; }
+    function distP(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+    function midP(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+
+    canvas.addEventListener('pointerdown', function (e) {
+      canvas.setPointerCapture(e.pointerId);
+      ptrs.set(e.pointerId, ptFromEvent(e));
+      if (ptrs.size === 1) {
+        panStart = ptFromEvent(e);
+        panCenter = { x: state.center.x, y: state.center.y };
+        tapDown = ptFromEvent(e);
+      } else if (ptrs.size === 2) {
+        var p = [].concat([...ptrs.values()]);
+        pinch = { d: distP(p[0], p[1]), s: state.scale, m: midP(p[0], p[1]) };
+      }
+    });
+
+    canvas.addEventListener('pointermove', function (e) {
+      if (!ptrs.has(e.pointerId)) return;
+      var now = ptFromEvent(e);
+      ptrs.set(e.pointerId, now);
+
+      if (ptrs.size === 1) {
+        if (panStart) {
+          stopAnimation();
+          var dx = now.x - panStart.x, dy = now.y - panStart.y;
+          state.center.x = panCenter.x - dx / state.scale;
+          state.center.y = panCenter.y + dy / state.scale;
+          requestRender();
+        } else if (state.type === 1 && state.juliaFollow && !anim.running) {
+          state.juliaC = complexAt(now.x, now.y);
+          requestRender();
+        }
+      } else if (ptrs.size === 2 && pinch) {
+        stopAnimation();
+        var p = [].concat([...ptrs.values()]);
+        var d = distP(p[0], p[1]);
+        var m = midP(p[0], p[1]);
+        var s1 = clamp(pinch.s * (d / Math.max(1, pinch.d)), MIN_SCALE, MAX_SCALE);
+        var o0 = offsetAt(pinch.m.x, pinch.m.y, pinch.s);
+        var o1 = offsetAt(m.x, m.y, s1);
+        state.center.x += o0.x - o1.x;
+        state.center.y += o0.y - o1.y;
+        state.scale = s1;
+        pinch = { d: d, s: s1, m: m };
+        requestRender();
+      }
+    });
+
+    function endPointer(e) {
+      var wasSingle = ptrs.size === 1 && ptrs.has(e.pointerId);
+      var up = ptFromEvent(e);
+      ptrs.delete(e.pointerId);
+      if (ptrs.size < 2) pinch = null;
+      if (wasSingle && tapDown && distP(up, tapDown) < 6 && state.type === 1 && !anim.running) {
+        state.juliaC = complexAt(up.x, up.y);
+        requestRender();
+      }
+      if (ptrs.size === 0) { panStart = null; panCenter = null; tapDown = null; }
+    }
+    canvas.addEventListener('pointerup', endPointer);
+    canvas.addEventListener('pointercancel', endPointer);
+
+    canvas.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0012));
+    }, { passive: false });
+
+    canvas.addEventListener('dblclick', function (e) {
+      zoomAt(e.clientX, e.clientY, 2.4);
+    });
+
+    window.addEventListener('resize', requestRender);
+
+    /* ============================================================
+       UI wiring
+       ============================================================ */
+    var iterSlider = document.getElementById('iter-slider');
+    var iterValue = document.getElementById('iter-value');
+    var hint = document.getElementById('julia-hint');
+
+    iterSlider.addEventListener('input', function () {
+      state.maxIter = +iterSlider.value;
+      iterValue.textContent = state.maxIter;
+      requestRender();
+    });
+
+    document.getElementById('auto-iter').addEventListener('change', function (e) {
+      if (anim.running && anim.mode === 'zoom') { e.target.checked = true; return; }
+      state.autoIter = e.target.checked;
+      requestRender();
+    });
+
+    function setQualityUI() {
+      ['q1', 'q2'].forEach(function (id) {
+        var el = document.getElementById(id);
+        var on = (+id[1]) === state.aa;
+        el.className = 'quality-btn rounded-lg text-[11px] font-medium px-2 py-1.5 transition ' +
+          (on ? 'bg-white text-black' : 'text-white/70 hover:text-white');
+      });
+    }
+    document.getElementById('q1').addEventListener('click', function () {
+      state.aa = 1; setQualityUI(); requestRender();
+    });
+    document.getElementById('q2').addEventListener('click', function () {
+      state.aa = 2; setQualityUI(); requestRender();
+    });
+    setQualityUI();
+
+    /* Fractal type buttons (with a keepView variant for animation) */
+    function applyType(type, keepView) {
+      if (anim.running) stopAnimation();
+      state.type = type;
+      if (!keepView) {
+        var p = PRESETS[type];
+        state.center = { x: p.center[0], y: p.center[1] };
+        state.scale = canvas.clientWidth / p.span;
+        state.baseScale = state.scale;
+        if (type === 1) {
+          state.juliaC = { x: JULIA_DEFAULT.x, y: JULIA_DEFAULT.y };
+        }
+      }
+      state.juliaFollow = (type === 1);
+      updateTypeUI();
+      requestRender();
+    }
+
+    var fractalBtns = document.querySelectorAll('.fractal-btn');
+    function setActiveButton() {
+      fractalBtns.forEach(function (b) {
+        var on = +b.dataset.fractal === state.type;
+        b.className = 'fractal-btn rounded-lg text-[11px] font-medium px-2 py-1.5 transition ' +
+          (on ? 'bg-white text-black' : 'text-white/70 hover:text-white');
+      });
+    }
+
+    fractalBtns.forEach(function (b) {
+      b.addEventListener('click', function () { applyType(+b.dataset.fractal, false); });
+    });
+
+    var row = document.getElementById('palette-row');
+    var swatches = [];
+    PALETTES.forEach(function (pal, i) {
+      var btn = document.createElement('button');
+      btn.title = pal.name;
+      var grad = 'linear-gradient(135deg, ' + pal.colors.map(function (c) {
+        return 'rgb(' + (c[0] * 255 | 0) + ',' + (c[1] * 255 | 0) + ',' + (c[2] * 255 | 0) + ')';
+      }).join(', ') + ')';
+      btn.style.background = grad;
+      btn.className = 'w-7 h-7 rounded-full border border-white/30 transition-transform hover:scale-110';
+      btn.addEventListener('click', function () {
+        palIndex = i;
+        swatches.forEach(function (s, j) {
+          s.className = 'w-7 h-7 rounded-full border transition-transform ' +
+            (j === palIndex ? 'border-white ring-2 ring-white/70 scale-110' : 'border-white/30 hover:scale-110');
+        });
+        requestRender();
+      });
+      row.appendChild(btn);
+      swatches.push(btn);
+    });
+    swatches[0].className = 'w-7 h-7 rounded-full border border-white ring-2 ring-white/70 scale-110';
+
+    /* Animation UI */
+    var animBtns = document.querySelectorAll('.anim-btn');
+    var playIcon = document.getElementById('anim-play-icon');
+    var pauseIcon = document.getElementById('anim-pause-icon');
+    var speedSlider = document.getElementById('anim-speed');
+
+    anim.speed = (parseInt(speedSlider.value, 10) || 100) / 100;
+    speedSlider.addEventListener('input', function () {
+      anim.speed = (parseInt(speedSlider.value, 10) || 100) / 100;
+    });
+
+    function updateAnimUI() {
+      animBtns.forEach(function (b) {
+        var on = b.dataset.anim === anim.mode;
+        b.className = 'anim-btn rounded-lg text-[11px] font-medium px-2 py-1.5 transition ' +
+          (on ? 'bg-white text-black' : 'text-white/70 hover:text-white');
+      });
+      playIcon.classList.toggle('hidden', anim.running);
+      pauseIcon.classList.toggle('hidden', !anim.running);
+    }
+
+    animBtns.forEach(function (b) {
+      b.addEventListener('click', function () {
+        var wasRunning = anim.running;
+        if (wasRunning) stopAnimation();
+        anim.mode = b.dataset.anim;
+        if (anim.mode === 'zoom') snapZoom();
+        if (anim.mode === 'julia') applyType(1, true);
+        updateAnimUI();
+        if (wasRunning) startAnimation();
+      });
+    });
+
+    document.getElementById('btn-anim-play').addEventListener('click', function () {
+      if (anim.running) stopAnimation();
+      else startAnimation();
+    });
+
+    setActiveButton();
+
+    document.getElementById('btn-reset').addEventListener('click', function () {
+      applyType(state.type, false);
+    });
+
+    document.getElementById('btn-random-julia').addEventListener('click', function () {
+      stopAnimation();
+      state.juliaC = { x: Math.random() * 3 - 1.5, y: Math.random() * 3 - 1.5 };
+      state.juliaFollow = false;
+      updateTypeUI();
+      requestRender();
+    });
+
+    document.getElementById('btn-lock-julia').addEventListener('click', function () {
+      state.juliaFollow = !state.juliaFollow;
+      updateTypeUI();
+    });
+
+    document.getElementById('btn-copy').addEventListener('click', function () {
+      var zoom = state.baseScale / state.scale;
+      var text = 'Re: ' + fmt(state.center.x) + ', Im: ' + fmt(state.center.y) +
+                 ', Zoom: ' + zoom.toExponential(2) + 'x';
+      try { navigator.clipboard.writeText(text); } catch (err) {}
+      showToast('Coordinates copied');
+    });
+
+    function updateTypeUI() {
+      setActiveButton();
+      var julia = state.type === 1;
+      document.getElementById('btn-random-julia').classList.toggle('hidden', !julia);
+      document.getElementById('btn-lock-julia').classList.toggle('hidden', !julia);
+      hint.classList.toggle('hidden', !julia);
+      document.getElementById('lock-open-icon').classList.toggle('hidden', !state.juliaFollow);
+      document.getElementById('lock-closed-icon').classList.toggle('hidden', state.juliaFollow);
+    }
+
+    /* Fullscreen / immersive toggle */
+    var immersive = false;
+    var panelUI = document.getElementById('panel-ui');
+    var panelInfo = document.getElementById('panel-info');
+    var fsMax = document.getElementById('fs-maximize');
+    var fsMin = document.getElementById('fs-minimize');
+
+    document.getElementById('btn-fullscreen').addEventListener('click', function () {
+      immersive = !immersive;
+      panelUI.classList.toggle('opacity-0', immersive);
+      panelUI.classList.toggle('pointer-events-none', immersive);
+      panelUI.classList.toggle('-translate-y-2', immersive);
+      panelInfo.classList.toggle('opacity-0', immersive);
+      panelInfo.classList.toggle('pointer-events-none', immersive);
+      panelInfo.classList.toggle('-translate-y-2', immersive);
+      fsMax.classList.toggle('hidden', immersive);
+      fsMin.classList.toggle('hidden', !immersive);
+    });
+
+    updateAnimUI();
+    updateTypeUI();
+
+    /* Init */
+    function init() {
+      if (canvas.clientWidth > 0) {
+        setView(0);
+      } else {
+        requestAnimationFrame(init);
+      }
+    }
+
+    function setView(type) {
+      state.type = type;
+      var p = PRESETS[type];
+      state.center = { x: p.center[0], y: p.center[1] };
+      state.scale = canvas.clientWidth / p.span;
+      state.baseScale = state.scale;
+      if (type === 1) {
+        state.juliaC = { x: JULIA_DEFAULT.x, y: JULIA_DEFAULT.y };
+        state.juliaFollow = true;
+      }
+      updateTypeUI();
+      requestRender();
+    }
+    init();
+
+  })();
+  </script>
+</body>
+</html>
